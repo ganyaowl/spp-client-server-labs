@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>{{ 'Управление расписанием' if scheduling else 'Расписание матчей' }}</h2>
+<table>
+    <thead><tr><th>Матч</th><th>Дата и время</th><th>Цена, сум</th><th>Свободных мест</th></tr></thead>
+    <tbody>{% for match in matches %}
+        <tr><td>{{ match.home }} — {{ match.away }}</td><td>{{ match.starts_at }}</td>
+            <td>{{ match.price }}</td><td>{{ match.available }}</td></tr>
+    {% else %}<tr><td colspan="4">Матчей пока нет.</td></tr>{% endfor %}</tbody>
+</table>
+{% endblock %}

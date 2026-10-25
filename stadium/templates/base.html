@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Стадион</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <main>
+        <h1>Стадион</h1>
+        {% if g.user %}
+        <nav>
+            <a href="{{ url_for('matches') }}">Матчи</a>
+            {% if g.user.role == 'admin' %}
+            <a href="{{ url_for('schedule') }}">Расписание</a>
+            {% else %}
+            <a href="{{ url_for('tickets') }}">Мои билеты</a>
+            {% endif %}
+        </nav>
+        <p>{{ g.user.name }} · {{ 'Администратор' if g.user.role == 'admin' else 'Кассир' }}</p>
+        <form method="post" action="{{ url_for('logout') }}">
+            <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+            <button type="submit">Выйти</button>
+        </form>
+        {% endif %}
+        {% for message in get_flashed_messages() %}<p role="alert">{{ message }}</p>{% endfor %}
+        {% block content %}{% endblock %}
+    </main>
+</body>
+</html>

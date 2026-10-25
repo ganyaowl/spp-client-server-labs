@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Заявки и выдача книг</h2>
+<table>
+    <thead><tr><th>№</th><th>Читатель</th><th>Книга</th><th>Дата</th><th>Статус</th></tr></thead>
+    <tbody>{% for row in rows %}
+        <tr><td>{{ row.id }}</td><td>{{ row.reader }}</td><td>{{ row.title }}</td><td>{{ row.created_at }}</td>
+            <td>{{ {'pending': 'На рассмотрении', 'approved': 'Одобрена', 'rejected': 'Отклонена'}[row.status] }}</td></tr>
+    {% else %}<tr><td colspan="5">Заявок пока нет.</td></tr>{% endfor %}</tbody>
+</table>
+{% endblock %}

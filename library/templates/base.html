@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Библиотека</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <main>
+        <h1>Библиотека</h1>
+        {% if g.user %}
+        <nav>
+            <a href="{{ url_for('catalog') }}">Каталог</a>
+            {% if g.user.role == 'admin' %}<a href="{{ url_for('requests_page') }}">Заявки</a>{% endif %}
+        </nav>
+        <p>{{ g.user.name }} · {{ 'Библиотекарь' if g.user.role == 'admin' else 'Читатель' }}</p>
+        <form method="post" action="{{ url_for('logout') }}">
+            <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+            <button type="submit">Выйти</button>
+        </form>
+        {% endif %}
+        {% for message in get_flashed_messages() %}<p role="alert">{{ message }}</p>{% endfor %}
+        {% block content %}{% endblock %}
+    </main>
+</body>
+</html>

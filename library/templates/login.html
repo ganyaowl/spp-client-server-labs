@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Вход</h2>
+<form method="post">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+    <p><label>Логин <input name="username" autocomplete="username" required></label></p>
+    <p><label>Пароль <input type="password" name="password" autocomplete="current-password" required></label></p>
+    <button type="submit">Войти</button>
+</form>
+{% endblock %}

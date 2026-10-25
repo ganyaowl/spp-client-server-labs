@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Продажа и возврат билетов</h2>
+<table>
+    <thead><tr><th>№</th><th>Матч</th><th>Дата</th><th>Место</th><th>Цена, сум</th><th>Статус</th></tr></thead>
+    <tbody>{% for row in rows %}
+        <tr><td>{{ row.id }}</td><td>{{ row.home }} — {{ row.away }}</td><td>{{ row.starts_at }}</td>
+            <td>Сектор {{ row.sector }}, ряд {{ row.row_number }}, место {{ row.seat_number }}</td>
+            <td>{{ row.price }}</td><td>{{ 'Возвращён' if row.returned_at else 'Продан' }}</td></tr>
+    {% else %}<tr><td colspan="6">Проданных билетов пока нет.</td></tr>{% endfor %}</tbody>
+</table>
+{% endblock %}
