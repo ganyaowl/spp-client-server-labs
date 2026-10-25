@@ -1,0 +1,4 @@
+{% macro date(value) -%}
+<span class="date">{{ value[8:10] }}.{{ value[5:7] }}.{{ value[:4] }}<small>{{ value[11:16] }}</small></span>
+{%- endmacro %}
+{% macro money(value) -%}{{ '{:,}'.format(value)|replace(',', ' ') }}{%- endmacro %}

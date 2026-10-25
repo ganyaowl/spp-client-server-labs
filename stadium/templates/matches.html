@@ -1,11 +1,53 @@
 {% extends "base.html" %}
+{% from "ui.html" import date, money %}
+{% block title %}{{ 'Расписание' if scheduling else 'Матчи' }} · Стадион{% endblock %}
 {% block content %}
-<h2>{{ 'Управление расписанием' if scheduling else 'Расписание матчей' }}</h2>
+<div class="page-heading"><div><span class="eyebrow">{{ 'Планирование' if scheduling else 'Афиша стадиона' }}</span><h1>{{ 'Управление расписанием' if scheduling else 'Расписание матчей' }}</h1><p>{{ 'Добавляйте встречи и корректируйте матчи без продаж.' if scheduling else 'Выберите встречу и проверьте наличие свободных мест.' }}</p></div><span class="count">Матчей: {{ matches|length }}</span></div>
+{% if scheduling %}
+<section class="panel"><div class="panel-heading"><h3>{{ 'Изменить матч' if editing else 'Новая встреча' }}</h3><small>Время по Ташкенту · UTC+5</small></div>
+<form method="post" action="{{ url_for('edit_match', match_id=editing) if editing else url_for('schedule') }}" class="filters">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+    <label>Хозяева <select name="home_id" required><option value="">Выберите команду</option>
+        {% for team in teams %}<option value="{{ team.id }}" {% if form.get('home_id')|string == team.id|string %}selected{% endif %}>{{ team.name }}</option>{% endfor %}
+    </select></label>
+    <label>Гости <select name="away_id" required><option value="">Выберите команду</option>
+        {% for team in teams %}<option value="{{ team.id }}" {% if form.get('away_id')|string == team.id|string %}selected{% endif %}>{{ team.name }}</option>{% endfor %}
+    </select></label>
+    <label>Дата и время <input type="datetime-local" name="starts_at" value="{{ form.get('starts_at', '')|replace(' ', 'T') }}" required></label>
+    <label>Цена, сум <input type="number" name="price" min="1" step="1" placeholder="Например, 50000" value="{{ form.get('price', '') }}" required></label>
+    <div class="form-actions"><button type="submit">{{ 'Сохранить' if editing else 'Добавить матч' }}</button>
+    {% if editing %}<a class="button button-secondary" href="{{ url_for('schedule') }}">Отмена</a>{% endif %}</div>
+</form>
+<p class="help-text">После первой продажи билета изменить или удалить матч будет нельзя.</p></section>
+{% else %}
+<section class="panel" aria-label="Поиск матчей">
+<form method="get" class="filters">
+    <label>Команда <select name="team_id"><option value="">Все команды</option>
+        {% for team in teams %}<option value="{{ team.id }}" {% if request.args.get('team_id') == team.id|string %}selected{% endif %}>{{ team.name }}</option>{% endfor %}
+    </select></label>
+    <label>Дата <input type="date" name="date" value="{{ request.args.get('date', '') }}"></label>
+    <label class="checkbox"><input type="checkbox" name="available" value="1" {% if request.args.get('available') == '1' %}checked{% endif %}> Есть билеты в продаже</label>
+    <div class="form-actions"><button type="submit">Найти</button> <a class="button button-secondary" href="{{ url_for('matches') }}">Сбросить</a></div>
+</form>
+</section>
+{% endif %}
+<section class="panel"><div class="panel-heading"><h3>{{ 'Запланированные встречи' if scheduling else 'Матчи на стадионе' }}</h3><small>Время — Ташкент, UTC+5</small></div><div class="table-wrap">
 <table>
-    <thead><tr><th>Матч</th><th>Дата и время</th><th>Цена, сум</th><th>Свободных мест</th></tr></thead>
+    <thead><tr><th>Матч</th><th>Дата и время</th><th>Цена, сум</th><th>Свободных мест</th><th>Действие</th></tr></thead>
     <tbody>{% for match in matches %}
-        <tr><td>{{ match.home }} — {{ match.away }}</td><td>{{ match.starts_at }}</td>
-            <td>{{ match.price }}</td><td>{{ match.available }}</td></tr>
-    {% else %}<tr><td colspan="4">Матчей пока нет.</td></tr>{% endfor %}</tbody>
+        <tr><td data-label="Матч" class="title-cell">{{ match.home }} — {{ match.away }}<small>{{ 'Матч начался' if match.starts_at <= now else 'Предстоящая встреча' }}</small></td><td data-label="Дата и время">{{ date(match.starts_at) }}</td>
+            <td data-label="Цена, сум" class="amount">{{ money(match.price) }}</td><td data-label="Свободно"><span class="badge {{ 'badge-muted' if match.available == 0 else '' }}">{{ match.available }} мест</span></td><td data-label="Действие"><div class="row-actions">
+                {% if scheduling and not match.sold and match.starts_at > now %}
+                <a class="button button-small button-secondary" href="{{ url_for('edit_match', match_id=match.id) }}">Изменить</a>
+                <form method="post" action="{{ url_for('delete_match', match_id=match.id) }}" onsubmit="return confirm('Удалить этот матч из расписания?')">
+                    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}"><button class="button-small button-danger" type="submit">Удалить</button>
+                </form>
+                {% elif scheduling %}<span class="badge badge-muted">{{ 'Есть история продаж' if match.sold else 'Матч начался' }}</span>
+                {% elif g.user.role == 'cashier' and match.starts_at > now and match.available > 0 %}
+                <a class="button button-small" href="{{ url_for('sell_ticket', match_id=match.id) }}">Продать билет</a>
+                {% else %}<span class="muted">{{ 'Матч начался' if match.starts_at <= now else 'Правки — в расписании' if g.user.role == 'admin' else 'Мест нет' }}</span>{% endif %}
+            </div></td></tr>
+    {% else %}<tr><td colspan="5" class="empty"><strong>По вашим условиям матчи не найдены.</strong>{{ 'Добавьте первую встречу с помощью формы выше.' if scheduling else 'Выберите другую дату или сбросьте фильтры.' }}</td></tr>{% endfor %}</tbody>
 </table>
+</div></section>
 {% endblock %}

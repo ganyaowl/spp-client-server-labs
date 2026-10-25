@@ -3,29 +3,38 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Стадион</title>
+    <title>{% block title %}Стадион{% endblock %}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
-<body>
-    <main>
-        <h1>Стадион</h1>
-        {% if g.user %}
-        <nav>
-            <a href="{{ url_for('matches') }}">Матчи</a>
+<body class="theme-stadium {{ 'signed-out' if not g.user else '' }}">
+    <a class="skip-link" href="#main">Перейти к содержимому</a>
+    {% if g.user %}
+    <aside class="sidebar">
+        <a class="brand" href="{{ url_for('matches') }}"><span class="brand-mark" aria-hidden="true">С</span><span>Стадион<small>Матчи и билеты</small></span></a>
+        <div class="nav-label">Рабочее пространство</div>
+        <nav aria-label="Главное меню">
+            <a href="{{ url_for('matches') }}" {% if request.endpoint in ('matches', 'sell_ticket') %}aria-current="page"{% endif %}><span aria-hidden="true">▦</span> Матчи</a>
             {% if g.user.role == 'admin' %}
-            <a href="{{ url_for('schedule') }}">Расписание</a>
+            <a href="{{ url_for('schedule') }}" {% if request.endpoint in ('schedule', 'edit_match') %}aria-current="page"{% endif %}><span aria-hidden="true">▤</span> Расписание</a>
             {% else %}
-            <a href="{{ url_for('tickets') }}">Мои билеты</a>
+            <a href="{{ url_for('tickets') }}" {% if request.endpoint == 'tickets' %}aria-current="page"{% endif %}><span aria-hidden="true">☷</span> Билеты</a>
             {% endif %}
         </nav>
-        <p>{{ g.user.name }} · {{ 'Администратор' if g.user.role == 'admin' else 'Кассир' }}</p>
-        <form method="post" action="{{ url_for('logout') }}">
-            <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
-            <button type="submit">Выйти</button>
-        </form>
-        {% endif %}
-        {% for message in get_flashed_messages() %}<p role="alert">{{ message }}</p>{% endfor %}
+        <div class="account">
+            <span class="avatar" aria-hidden="true">{{ g.user.name[0] }}</span>
+            <div><strong>{{ g.user.name }}</strong><small>{{ 'Администратор' if g.user.role == 'admin' else 'Кассир' }}</small></div>
+            <form method="post" action="{{ url_for('logout') }}">
+                <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}"><button class="sign-out" type="submit">Выйти</button>
+            </form>
+        </div>
+    </aside>
+    {% endif %}
+    <main id="main" class="workspace">
+        {% if g.user %}<header class="topbar"><span>Управление стадионом</span><span class="topbar-note">Ташкент · UTC+5</span></header>{% endif %}
+        <div class="page-content">
+        {% for category, message in get_flashed_messages(with_categories=true) %}<div class="notice {{ 'notice-error' if category == 'error' else '' }}" role="{{ 'alert' if category == 'error' else 'status' }}"><span aria-hidden="true">{{ '!' if category == 'error' else '✓' }}</span>{{ message }}</div>{% endfor %}
         {% block content %}{% endblock %}
+        </div>
     </main>
 </body>
 </html>

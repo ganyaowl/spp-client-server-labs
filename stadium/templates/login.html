@@ -1,10 +1,23 @@
 {% extends "base.html" %}
+{% block title %}Вход · Стадион{% endblock %}
 {% block content %}
-<h2>Вход</h2>
-<form method="post">
+<div class="auth-layout">
+<section class="auth-intro">
+    <div class="brand"><span class="brand-mark" aria-hidden="true">С</span><span>Стадион<small>Матчи и билеты</small></span></div>
+    <h1>Каждому матчу —<br>своё место.</h1>
+    <p>Расписание встреч, свободные места и работа с билетами в одном рабочем пространстве.</p>
+    <div class="auth-steps"><span>01 · Выберите матч</span><span>02 · Найдите свободное место</span><span>03 · Оформите билет</span></div>
+</section>
+<section class="auth-card">
+<span class="eyebrow">Всё готово к работе</span><h2>Вход в кабинет</h2>
+<p class="muted">Введите свои данные. Кабинет откроется в соответствии с вашей ролью.</p>
+<form method="post" class="auth-form">
     <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
-    <p><label>Логин <input name="username" autocomplete="username" required></label></p>
-    <p><label>Пароль <input type="password" name="password" autocomplete="current-password" required></label></p>
+    <label>Логин <input name="username" value="{{ request.form.get('username', '') }}" placeholder="Ваш логин" autocomplete="username" required autofocus></label>
+    <label>Пароль <input type="password" name="password" placeholder="Ваш пароль" autocomplete="current-password" required></label>
     <button type="submit">Войти</button>
 </form>
+<p class="auth-hint">Администратору — управление расписанием.<br>Кассиру — продажа и возврат билетов.</p>
+</section>
+</div>
 {% endblock %}

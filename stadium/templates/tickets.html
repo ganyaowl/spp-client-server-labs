@@ -1,12 +1,51 @@
 {% extends "base.html" %}
+{% from "ui.html" import date, money %}
+{% block title %}Билеты · Стадион{% endblock %}
 {% block content %}
-<h2>Продажа и возврат билетов</h2>
+{% if match %}
+<div class="page-heading"><div><span class="eyebrow">Касса стадиона</span><h1>Продажа билета</h1><p>Выберите свободное место и подтвердите оформление.</p></div><a class="button button-secondary" href="{{ url_for('matches') }}">← К матчам</a></div>
+<section class="panel"><div class="match-summary"><div><h2>{{ match.home }} — {{ match.away }}</h2><p>{{ date(match.starts_at) }} · Ташкент, UTC+5</p></div><div class="match-price"><strong>{{ money(match.price) }} сум</strong><small>Стоимость одного билета</small></div></div>
+{% if seats %}
+<form method="post" class="filters">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+    <label>Свободное место <select name="seat_id" required><option value="">Выберите место</option>
+        {% for seat in seats %}<option value="{{ seat.id }}" {% if request.form.get('seat_id') == seat.id|string %}selected{% endif %}>Сектор {{ seat.sector }}, ряд {{ seat.row_number }}, место {{ seat.seat_number }}</option>{% endfor %}
+    </select></label>
+    <div class="form-actions"><button type="submit">Продать билет</button></div>
+</form>
+<p class="help-text">Место закрепится после продажи. Вернуть билет можно до начала матча.</p>
+{% else %}<div class="empty"><strong>Свободных мест больше нет.</strong>Вернитесь к расписанию и выберите другой матч.</div>{% endif %}
+</section>
+{% else %}
+<div class="page-heading"><div><span class="eyebrow">Касса стадиона</span><h1>Продажа и возврат билетов</h1><p>Найдите билет по номеру, матчу или статусу.</p></div><a class="button" href="{{ url_for('matches') }}">Продать билет</a></div>
+<section class="panel" aria-label="Поиск билетов">
+<form method="get" class="filters">
+    <label>Номер билета <input type="number" name="ticket_id" min="1" placeholder="Например, 12" value="{{ request.args.get('ticket_id', '') }}"></label>
+    <label>Матч <select name="match_id"><option value="">Все матчи</option>
+        {% for item in matches %}<option value="{{ item.id }}" {% if request.args.get('match_id') == item.id|string %}selected{% endif %}>{{ item.home }} — {{ item.away }}, {{ item.starts_at }}</option>{% endfor %}
+    </select></label>
+    <label>Статус <select name="status">
+        {% for value, label in [('', 'Все'), ('active', 'Продан'), ('returned', 'Возвращён')] %}<option value="{{ value }}" {% if request.args.get('status', '') == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select></label>
+    <div class="form-actions"><button type="submit">Найти</button> <a class="button button-secondary" href="{{ url_for('tickets') }}">Сбросить</a></div>
+</form>
+</section>
+<section class="panel"><div class="panel-heading"><h3>История билетов</h3><small>Найдено: {{ rows|length }}</small></div><div class="table-wrap">
 <table>
-    <thead><tr><th>№</th><th>Матч</th><th>Дата</th><th>Место</th><th>Цена, сум</th><th>Статус</th></tr></thead>
+    <thead><tr><th>№</th><th>Матч</th><th>Дата (UTC+5)</th><th>Место</th><th>Цена, сум</th><th>Кассир</th><th>Статус</th><th>Действие</th></tr></thead>
     <tbody>{% for row in rows %}
-        <tr><td>{{ row.id }}</td><td>{{ row.home }} — {{ row.away }}</td><td>{{ row.starts_at }}</td>
-            <td>Сектор {{ row.sector }}, ряд {{ row.row_number }}, место {{ row.seat_number }}</td>
-            <td>{{ row.price }}</td><td>{{ 'Возвращён' if row.returned_at else 'Продан' }}</td></tr>
-    {% else %}<tr><td colspan="6">Проданных билетов пока нет.</td></tr>{% endfor %}</tbody>
+        <tr><td data-label="Билет" class="muted">#{{ row.id }}</td><td data-label="Матч" class="title-cell">{{ row.home }} — {{ row.away }}</td><td data-label="Дата и время">{{ date(row.starts_at) }}</td>
+            <td data-label="Место" class="title-cell">Сектор {{ row.sector }}<small>Ряд {{ row.row_number }} · Место {{ row.seat_number }}</small></td>
+            <td data-label="Цена, сум" class="amount">{{ money(row.price) }}</td><td data-label="Кассир">{{ row.cashier }}</td><td data-label="Статус"><span class="badge {{ 'badge-muted' if row.returned_at else '' }}">{{ 'Возвращён' if row.returned_at else 'Продан' }}</span></td><td data-label="Действие">
+                {% if not row.returned_at and row.starts_at > now %}
+                <form method="post" action="{{ url_for('return_ticket', ticket_id=row.id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}"><button class="button-small button-secondary" type="submit">Вернуть билет</button>
+                </form>
+                {% endif %}
+            </td></tr>
+    {% else %}<tr><td colspan="8" class="empty"><strong>По вашим условиям билеты не найдены.</strong>Измените фильтры или оформите первую продажу из списка матчей.</td></tr>{% endfor %}</tbody>
 </table>
+</div></section>
+<p class="muted">Возврат доступен до начала матча. История продаж и возвратов сохраняется.</p>
+{% endif %}
 {% endblock %}

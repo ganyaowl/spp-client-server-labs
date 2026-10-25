@@ -1,10 +1,31 @@
 {% extends "base.html" %}
+{% block title %}Каталог книг · Библиотека{% endblock %}
 {% block content %}
-<h2>Каталог книг</h2>
+<div class="page-heading"><div><span class="eyebrow">Книжный фонд</span><h1>Каталог книг</h1><p>{{ 'Проверяйте наличие книг в библиотеке.' if g.user.role == 'admin' else 'Найдите книгу и отправьте заявку библиотекарю.' }}</p></div><span class="count">Найдено: {{ books|length }}</span></div>
+<section class="panel" aria-label="Поиск книг">
+<form method="get" class="filters">
+    <label>Название <input name="title" placeholder="Введите часть названия" value="{{ request.args.get('title', '') }}"></label>
+    <label>Автор <select name="author_id"><option value="">Все авторы</option>
+        {% for author in authors %}<option value="{{ author.id }}" {% if request.args.get('author_id') == author.id|string %}selected{% endif %}>{{ author.name }}</option>{% endfor %}
+    </select></label>
+    <label class="checkbox"><input type="checkbox" name="available" value="1" {% if request.args.get('available') == '1' %}checked{% endif %}> Только доступные</label>
+    <div class="form-actions"><button type="submit">Найти</button> <a class="button button-secondary" href="{{ url_for('catalog') }}">Сбросить</a></div>
+</form>
+</section>
+<section class="panel"><div class="panel-heading"><h3>Книги в каталоге</h3><small>Наличие обновляется после выдачи и возврата</small></div><div class="table-wrap">
 <table>
-    <thead><tr><th>Название</th><th>Автор</th><th>Доступно экземпляров</th></tr></thead>
+    <thead><tr><th>Название</th><th>Автор</th><th>Доступно экземпляров</th><th>Действие</th></tr></thead>
     <tbody>{% for book in books %}
-        <tr><td>{{ book.title }}</td><td>{{ book.author }}</td><td>{{ book.available }}</td></tr>
-    {% else %}<tr><td colspan="3">Книг пока нет.</td></tr>{% endfor %}</tbody>
+        <tr><td data-label="Название" class="title-cell"><span class="book-title"><span class="book-mark" aria-hidden="true"></span>{{ book.title }}</span></td><td data-label="Автор">{{ book.author }}</td><td data-label="Наличие"><span class="badge {{ 'badge-muted' if book.available == 0 else '' }}">{{ book.available }} из {{ book.total }}</span></td><td data-label="Действие">
+            {% if g.user.role == 'reader' and book.available > 0 %}
+            <form method="post" action="{{ url_for('submit_request', book_id=book.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+                <button class="button-small" type="submit">Подать заявку</button>
+            </form>
+            {% elif book.available == 0 %}<span class="muted">Нет в наличии</span>{% else %}<span class="muted">Просмотр</span>{% endif %}
+        </td></tr>
+    {% else %}<tr><td colspan="4" class="empty"><strong>По вашим условиям книги не найдены.</strong>Попробуйте другое название или сбросьте фильтры.</td></tr>{% endfor %}</tbody>
 </table>
+</div></section>
+{% if g.user.role == 'reader' %}<p class="muted">Заявка не резервирует экземпляр. Библиотекарь проверит наличие при выдаче книги.</p>{% endif %}
 {% endblock %}

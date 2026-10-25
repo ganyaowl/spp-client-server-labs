@@ -5,7 +5,7 @@ from pathlib import Path
 from flask import Flask, abort, flash, g, redirect, render_template, request, session, url_for
 from werkzeug.security import check_password_hash
 
-from db import close_db, get_db, init_db
+import db
 
 
 def create_app(test_config=None):
@@ -22,15 +22,14 @@ def create_app(test_config=None):
                       SESSION_COOKIE_NAME='library_session', SESSION_COOKIE_SAMESITE='Lax')
     if test_config:
         app.config.update(test_config)
-    app.teardown_appcontext(close_db)
+    app.teardown_appcontext(db.close_db)
     with app.app_context():
-        init_db()
+        db.init_db()
 
     @app.before_request
     def check_access():
         session.setdefault('csrf_token', secrets.token_hex(32))
-        g.user = get_db().execute('SELECT * FROM users WHERE id = ?',
-                                  (session.get('user_id'),)).fetchone()
+        g.user = db.get_user(session.get('user_id'))
         if request.method == 'POST' and not secrets.compare_digest(
                 session['csrf_token'].encode(), request.form.get('csrf_token', '').encode()):
             abort(400, description='Форма устарела. Обновите страницу и повторите действие.')
@@ -40,13 +39,12 @@ def create_app(test_config=None):
     @app.route('/login', methods=['GET', 'POST'])
     def login():
         if request.method == 'POST':
-            user = get_db().execute('SELECT * FROM users WHERE username = ?',
-                                    (request.form.get('username', '').strip(),)).fetchone()
+            user = db.find_user(request.form.get('username', '').strip())
             if user and check_password_hash(user['password_hash'], request.form.get('password', '')):
                 session.clear()
                 session['user_id'] = user['id']
                 return redirect(url_for('catalog'))
-            flash('Неверный логин или пароль.')
+            flash('Неверный логин или пароль.', 'error')
         return render_template('login.html')
 
     @app.post('/logout')
@@ -56,24 +54,54 @@ def create_app(test_config=None):
 
     @app.get('/')
     def catalog():
-        books = get_db().execute('''
-            SELECT b.id, b.title, a.name AS author, b.total - (
-                SELECT COUNT(*) FROM loans l JOIN requests r ON r.id = l.request_id
-                WHERE r.book_id = b.id AND l.returned_at IS NULL
-            ) AS available FROM books b JOIN authors a ON a.id = b.author_id ORDER BY b.title
-        ''').fetchall()
-        return render_template('catalog.html', books=books)
+        books = db.get_books(request.args.get('title', ''), request.args.get('author_id', ''),
+                             request.args.get('available') == '1')
+        return render_template('catalog.html', books=books, authors=db.get_authors())
+
+    def require_role(role):
+        if g.user['role'] != role:
+            abort(403, description='У вашей роли нет доступа к этому действию.')
+
+    @app.post('/books/<int:book_id>/request')
+    def submit_request(book_id):
+        require_role('reader')
+        db.submit_request(g.user['id'], book_id)
+        flash('Заявка отправлена библиотекарю.')
+        return redirect(url_for('requests_page'))
 
     @app.get('/requests')
     def requests_page():
-        if g.user['role'] != 'admin':
-            abort(403, description='Эта страница доступна только библиотекарю.')
-        rows = get_db().execute('''
-            SELECT r.id, r.status, r.created_at, u.name AS reader, b.title
-            FROM requests r JOIN users u ON u.id = r.reader_id JOIN books b ON b.id = r.book_id
-            ORDER BY r.id DESC
-        ''').fetchall()
-        return render_template('requests.html', rows=rows)
+        reader_id = g.user['id'] if g.user['role'] == 'reader' else None
+        return render_template('requests.html', rows=db.get_requests(reader_id))
+
+    @app.post('/requests/<int:request_id>/issue')
+    def issue(request_id):
+        require_role('admin')
+        db.process_request(request_id, issue=True)
+        flash('Книга выдана читателю.')
+        return redirect(url_for('requests_page'))
+
+    @app.post('/requests/<int:request_id>/reject')
+    def reject(request_id):
+        require_role('admin')
+        db.process_request(request_id, issue=False)
+        flash('Заявка отклонена.')
+        return redirect(url_for('requests_page'))
+
+    @app.post('/loans/<int:loan_id>/return')
+    def return_book(loan_id):
+        require_role('admin')
+        db.return_book(loan_id)
+        flash('Возврат принят. Экземпляр снова доступен.')
+        return redirect(url_for('requests_page'))
+
+    @app.errorhandler(ValueError)
+    def validation_error(error):
+        return render_template('error.html', message=str(error)), 400
+
+    @app.errorhandler(LookupError)
+    def missing_record(error):
+        return render_template('error.html', message=str(error)), 404
 
     @app.errorhandler(400)
     @app.errorhandler(403)

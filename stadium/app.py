@@ -5,7 +5,7 @@ from pathlib import Path
 from flask import Flask, abort, flash, g, redirect, render_template, request, session, url_for
 from werkzeug.security import check_password_hash
 
-from db import close_db, get_db, init_db
+import db
 
 
 def create_app(test_config=None):
@@ -22,15 +22,14 @@ def create_app(test_config=None):
                       SESSION_COOKIE_NAME='stadium_session', SESSION_COOKIE_SAMESITE='Lax')
     if test_config:
         app.config.update(test_config)
-    app.teardown_appcontext(close_db)
+    app.teardown_appcontext(db.close_db)
     with app.app_context():
-        init_db()
+        db.init_db()
 
     @app.before_request
     def check_access():
         session.setdefault('csrf_token', secrets.token_hex(32))
-        g.user = get_db().execute('SELECT * FROM users WHERE id = ?',
-                                  (session.get('user_id'),)).fetchone()
+        g.user = db.get_user(session.get('user_id'))
         if request.method == 'POST' and not secrets.compare_digest(
                 session['csrf_token'].encode(), request.form.get('csrf_token', '').encode()):
             abort(400, description='Форма устарела. Обновите страницу и повторите действие.')
@@ -40,13 +39,12 @@ def create_app(test_config=None):
     @app.route('/login', methods=['GET', 'POST'])
     def login():
         if request.method == 'POST':
-            user = get_db().execute('SELECT * FROM users WHERE username = ?',
-                                    (request.form.get('username', '').strip(),)).fetchone()
+            user = db.find_user(request.form.get('username', '').strip())
             if user and check_password_hash(user['password_hash'], request.form.get('password', '')):
                 session.clear()
                 session['user_id'] = user['id']
                 return redirect(url_for('matches'))
-            flash('Неверный логин или пароль.')
+            flash('Неверный логин или пароль.', 'error')
         return render_template('login.html')
 
     @app.post('/logout')
@@ -54,37 +52,96 @@ def create_app(test_config=None):
         session.clear()
         return redirect(url_for('login'))
 
-    def match_rows():
-        return get_db().execute('''
-            SELECT m.id, h.name AS home, a.name AS away, m.starts_at, m.price,
-                (SELECT COUNT(*) FROM seats) - (SELECT COUNT(*) FROM tickets t
-                    WHERE t.match_id = m.id AND t.returned_at IS NULL) AS available
-            FROM matches m JOIN teams h ON h.id = m.home_id JOIN teams a ON a.id = m.away_id
-            ORDER BY m.starts_at
-        ''').fetchall()
+    def require_role(role):
+        if g.user['role'] != role:
+            abort(403, description='У вашей роли нет доступа к этому действию.')
+
+    @app.context_processor
+    def clock():
+        return {'now': db.now().isoformat(' ', timespec='seconds')}
 
     @app.get('/')
     def matches():
-        return render_template('matches.html', matches=match_rows())
+        rows = db.get_matches(request.args.get('team_id', ''), request.args.get('date', ''),
+                              request.args.get('available') == '1')
+        return render_template('matches.html', matches=rows, teams=db.get_teams())
 
-    @app.get('/schedule')
+    @app.route('/schedule', methods=['GET', 'POST'])
     def schedule():
-        if g.user['role'] != 'admin':
-            abort(403, description='Эта страница доступна только администратору.')
-        return render_template('matches.html', matches=match_rows(), scheduling=True)
+        require_role('admin')
+        if request.method == 'POST':
+            try:
+                db.save_match(request.form)
+            except ValueError as error:
+                flash(str(error), 'error')
+                return schedule_form(request.form, status=400)
+            flash('Матч добавлен в расписание.')
+            return redirect(url_for('schedule'))
+        return schedule_form({})
+
+    def schedule_form(form, editing=None, status=200):
+        return render_template('matches.html', matches=db.get_matches(), teams=db.get_teams(),
+                               scheduling=True, form=form, editing=editing), status
+
+    @app.route('/schedule/<int:match_id>/edit', methods=['GET', 'POST'])
+    def edit_match(match_id):
+        require_role('admin')
+        match = db.get_match(match_id)
+        db.check_editable(match)
+        if request.method == 'POST':
+            try:
+                db.save_match(request.form, match_id)
+            except ValueError as error:
+                flash(str(error), 'error')
+                return schedule_form(request.form, editing=match_id, status=400)
+            flash('Расписание обновлено.')
+            return redirect(url_for('schedule'))
+        return schedule_form(dict(match), editing=match_id)
+
+    @app.post('/schedule/<int:match_id>/delete')
+    def delete_match(match_id):
+        require_role('admin')
+        db.delete_match(match_id)
+        flash('Матч удалён из расписания.')
+        return redirect(url_for('schedule'))
+
+    @app.route('/matches/<int:match_id>/tickets', methods=['GET', 'POST'])
+    def sell_ticket(match_id):
+        require_role('cashier')
+        match = db.get_match(match_id)
+        db.check_future(match)
+        if request.method == 'POST':
+            try:
+                ticket_id = db.sell_ticket(match_id, request.form.get('seat_id', ''), g.user['id'])
+            except ValueError as error:
+                flash(str(error), 'error')
+                return render_template('tickets.html', match=match, seats=db.get_seats(match_id)), 400
+            price = db.get_tickets(str(ticket_id))[0]['price']
+            flash(f'Билет №{ticket_id} продан за {price} сум.')
+            return redirect(url_for('tickets', ticket_id=ticket_id))
+        return render_template('tickets.html', match=match, seats=db.get_seats(match_id))
 
     @app.get('/tickets')
     def tickets():
-        if g.user['role'] != 'cashier':
-            abort(403, description='Эта страница доступна только кассиру.')
-        rows = get_db().execute('''
-            SELECT t.id, h.name AS home, a.name AS away, m.starts_at,
-                s.sector, s.row_number, s.seat_number, t.price, t.returned_at
-            FROM tickets t JOIN matches m ON m.id = t.match_id
-            JOIN teams h ON h.id = m.home_id JOIN teams a ON a.id = m.away_id
-            JOIN seats s ON s.id = t.seat_id WHERE t.cashier_id = ? ORDER BY t.id DESC
-        ''', (g.user['id'],)).fetchall()
-        return render_template('tickets.html', rows=rows)
+        require_role('cashier')
+        rows = db.get_tickets(request.args.get('ticket_id', ''), request.args.get('match_id', ''),
+                             request.args.get('status', ''))
+        return render_template('tickets.html', rows=rows, matches=db.get_matches())
+
+    @app.post('/tickets/<int:ticket_id>/return')
+    def return_ticket(ticket_id):
+        require_role('cashier')
+        db.return_ticket(ticket_id)
+        flash('Билет возвращён. Место снова доступно.')
+        return redirect(url_for('tickets', ticket_id=ticket_id))
+
+    @app.errorhandler(ValueError)
+    def validation_error(error):
+        return render_template('error.html', message=str(error)), 400
+
+    @app.errorhandler(LookupError)
+    def missing_record(error):
+        return render_template('error.html', message=str(error)), 404
 
     @app.errorhandler(400)
     @app.errorhandler(403)

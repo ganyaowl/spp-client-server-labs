@@ -1,11 +1,33 @@
 {% extends "base.html" %}
+{% from "ui.html" import date %}
+{% block title %}Заявки · Библиотека{% endblock %}
 {% block content %}
-<h2>Заявки и выдача книг</h2>
+<div class="page-heading"><div><span class="eyebrow">{{ 'Обслуживание читателей' if g.user.role == 'admin' else 'Личный кабинет' }}</span><h1>{{ 'Заявки и выдача книг' if g.user.role == 'admin' else 'Мои заявки' }}</h1><p>{{ 'Обрабатывайте заявки и фиксируйте возврат выданных книг.' if g.user.role == 'admin' else 'Здесь собрана история ваших заявок и полученных книг.' }}</p></div><span class="count">Всего: {{ rows|length }}</span></div>
+<section class="panel"><div class="panel-heading"><h3>История заявок</h3><small>{{ 'Новые заявки — со статусом «На рассмотрении»' if g.user.role == 'admin' else 'Статус меняется после обработки библиотекарем' }}</small></div><div class="table-wrap">
 <table>
-    <thead><tr><th>№</th><th>Читатель</th><th>Книга</th><th>Дата</th><th>Статус</th></tr></thead>
+    <thead><tr><th>№</th><th>Читатель</th><th>Книга</th><th>Даты</th><th>Статус</th><th>Действие</th></tr></thead>
     <tbody>{% for row in rows %}
-        <tr><td>{{ row.id }}</td><td>{{ row.reader }}</td><td>{{ row.title }}</td><td>{{ row.created_at }}</td>
-            <td>{{ {'pending': 'На рассмотрении', 'approved': 'Одобрена', 'rejected': 'Отклонена'}[row.status] }}</td></tr>
-    {% else %}<tr><td colspan="5">Заявок пока нет.</td></tr>{% endfor %}</tbody>
+        <tr><td data-label="Заявка" class="muted">#{{ row.id }}</td><td data-label="Читатель">{{ row.reader }}</td><td data-label="Книга" class="title-cell">{{ row.title }}</td><td data-label="Даты"><div class="date-list">
+            <span>Заявка {{ date(row.created_at) }}</span>
+            {% if row.issued_at %}<span>Выдача {{ date(row.issued_at) }}</span>{% endif %}
+            {% if row.returned_at %}<span>Возврат {{ date(row.returned_at) }}</span>{% endif %}
+        </div></td><td data-label="Статус"><span class="badge {{ 'badge-muted' if row.returned_at else 'badge-info' if row.loan_id else 'badge-pending' if row.status == 'pending' else 'badge-danger' }}">{{ 'Возвращена' if row.returned_at else 'Выдана' if row.loan_id else 'На рассмотрении' if row.status == 'pending' else 'Отклонена' }}</span></td><td data-label="Действие"><div class="row-actions">
+            {% if g.user.role == 'admin' %}
+                {% if row.status == 'pending' %}
+                <form method="post" action="{{ url_for('issue', request_id=row.id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}"><button class="button-small" type="submit">Выдать</button>
+                </form>
+                <form method="post" action="{{ url_for('reject', request_id=row.id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}"><button class="button-small button-secondary" type="submit">Отклонить</button>
+                </form>
+                {% elif row.loan_id and not row.returned_at %}
+                <form method="post" action="{{ url_for('return_book', loan_id=row.loan_id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}"><button class="button-small" type="submit">Принять возврат</button>
+                </form>
+                {% endif %}
+            {% endif %}
+        </div></td></tr>
+    {% else %}<tr><td colspan="6" class="empty"><strong>Заявок пока нет.</strong>{{ 'Здесь появятся заявки от читателей.' if g.user.role == 'admin' else 'Откройте каталог, выберите книгу и отправьте первую заявку.' }}</td></tr>{% endfor %}</tbody>
 </table>
+</div></section>
 {% endblock %}
